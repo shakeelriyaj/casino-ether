@@ -1,170 +1,488 @@
-import React from 'react'
-import ReactDOM from 'react-dom'
-import Web3 from 'web3'
-import './../css/index.css'
+import "regenerator-runtime/runtime";
+import React from "react";
+import ReactDOM from "react-dom";
+import Web3 from "web3";
+import "./../css/index.css";
 
 class App extends React.Component {
-   constructor(props){
-      super(props)
-      this.state = {
-         lastWinner: 0,
-         numberOfBets: 0,
-         minimumBet: 0,
-         totalBet: 0,
-         maxAmountOfBets: 0,
+  constructor(props) {
+    super(props);
+    this.state = {
+      numberOfBets: 0,
+      minimumBet: 0,
+      totalBet: 0,
+      maxAmountOfBets: 0,
+      web3: null,
+      contract: null,
+      account: null,
+      loading: true,
+      error: null,
+    };
+  }
+
+  async componentDidMount() {
+    await this.initWeb3();
+    if (this.state.contract) {
+      this.updateState();
+      this.setupListeners();
+      // Update state every 7 seconds
+      this.interval = setInterval(() => this.updateState(), 7000);
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+  }
+
+  async initWeb3() {
+    // Check if MetaMask is installed
+    if (typeof window.ethereum === "undefined") {
+      this.setState({
+        error: "Please install MetaMask to use this dApp!",
+        loading: false,
+      });
+      return;
+    }
+
+    try {
+      // Request account access
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      console.log("Account access granted");
+
+      const web3Instance = new Web3(window.ethereum);
+
+      if (!accounts || !accounts.length) {
+        this.setState({
+          error: "No MetaMask accounts found. Please unlock MetaMask.",
+          loading: false,
+        });
+        return;
       }
 
-      if(typeof web3 != 'undefined'){
-         console.log("Using web3 detected from external source like Metamask")
-         this.web3 = new Web3(web3.currentProvider)
-      }else{
-         console.log("No web3 detected. Falling back to http://localhost:8545. You should remove this fallback when you deploy live, as it's inherently insecure. Consider switching to Metamask for development. More info here: http://truffleframework.com/tutorials/truffle-and-metamask");
-         this.web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"))
-      }
+      const userAccount = accounts[0];
 
-      const MyContract = web3.eth.contract([{"constant":false,"inputs":[],"name":"generateNumberWinner","outputs":[],"payable":true,"type":"function"},{"constant":false,"inputs":[{"name":"myid","type":"bytes32"},{"name":"result","type":"string"}],"name":"__callback","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"numberOfBets","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"_queryId","type":"bytes32"},{"name":"_result","type":"string"},{"name":"_proof","type":"bytes"}],"name":"__callback","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"player","type":"address"}],"name":"checkPlayerExists","outputs":[{"name":"","type":"bool"}],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"kill","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"resetData","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"bets","type":"uint256"}],"name":"updateMaxBets","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"number","type":"uint256"}],"name":"bet","outputs":[],"payable":true,"type":"function"},{"constant":false,"inputs":[{"name":"amountWei","type":"uint256"}],"name":"updateMinimumBet","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"distributePrizes","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"numberWinner","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"minimumBet","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"maxAmountOfBets","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"constant":true,"inputs":[{"name":"","type":"uint256"}],"name":"players","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"totalBet","outputs":[{"name":"","type":"uint256"}],"payable":false,"type":"function"},{"inputs":[{"name":"_maxAmountOfBets","type":"uint256"}],"payable":false,"type":"constructor"},{"payable":true,"type":"fallback"}])
-      this.state.ContractInstance = MyContract.at("0x430d959fa54714aca8eecd61fae2661fca900e04")
+      console.log("Connected account:", userAccount);
 
-      window.a = this.state
-   }
+      // Your contract ABI
+      const contractABI = [
+        {
+          constant: false,
+          inputs: [
+            {
+              name: "numberSelected",
+              type: "uint256",
+            },
+          ],
+          name: "bet",
+          outputs: [],
+          payable: true,
+          stateMutability: "payable",
+          type: "function",
+        },
+        {
+          constant: false,
+          inputs: [
+            {
+              name: "numberWinner",
+              type: "uint256",
+            },
+          ],
+          name: "distributePrizes",
+          outputs: [],
+          payable: false,
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          constant: false,
+          inputs: [],
+          name: "generateNumberWinner",
+          outputs: [],
+          payable: false,
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          constant: false,
+          inputs: [],
+          name: "kill",
+          outputs: [],
+          payable: false,
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              name: "_minimumBet",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "nonpayable",
+          type: "constructor",
+        },
+        {
+          payable: true,
+          stateMutability: "payable",
+          type: "fallback",
+        },
+        {
+          constant: true,
+          inputs: [
+            {
+              name: "player",
+              type: "address",
+            },
+          ],
+          name: "checkPlayerExists",
+          outputs: [
+            {
+              name: "",
+              type: "bool",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "maxAmountOfBets",
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "minimumBet",
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "numberOfBets",
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "owner",
+          outputs: [
+            {
+              name: "",
+              type: "address",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [
+            {
+              name: "",
+              type: "address",
+            },
+          ],
+          name: "playerInfo",
+          outputs: [
+            {
+              name: "amountBet",
+              type: "uint256",
+            },
+            {
+              name: "numberSelected",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [
+            {
+              name: "",
+              type: "uint256",
+            },
+          ],
+          name: "players",
+          outputs: [
+            {
+              name: "",
+              type: "address",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: "totalBet",
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+            },
+          ],
+          payable: false,
+          stateMutability: "view",
+          type: "function",
+        },
+      ];
 
-   componentDidMount(){
-      this.updateState()
-      this.setupListeners()
+      // IMPORTANT: Replace this with YOUR contract address from Remix
+      const contractAddress = "0x3a6fca563ab1144d8ffe22a6a94f0bc6309d9ec3";
 
-      setInterval(this.updateState.bind(this), 7e3)
-   }
+      // Create contract instance
+      const contractInstance = new web3Instance.eth.Contract(
+        contractABI,
+        contractAddress,
+      );
 
-   updateState(){
-      this.state.ContractInstance.minimumBet((err, result) => {
-         if(result != null){
-            this.setState({
-               minimumBet: parseFloat(web3.fromWei(result, 'ether'))
-            })
-         }
-      })
-      this.state.ContractInstance.totalBet((err, result) => {
-         if(result != null){
-            this.setState({
-               totalBet: parseFloat(web3.fromWei(result, 'ether'))
-            })
-         }
-      })
-      this.state.ContractInstance.numberOfBets((err, result) => {
-         if(result != null){
-            this.setState({
-               numberOfBets: parseInt(result)
-            })
-         }
-      })
-      this.state.ContractInstance.maxAmountOfBets((err, result) => {
-         if(result != null){
-            this.setState({
-               maxAmountOfBets: parseInt(result)
-            })
-         }
-      })
-   }
+      // Update state
+      this.setState({
+        web3: web3Instance,
+        contract: contractInstance,
+        account: userAccount,
+        loading: false,
+      });
 
-   // Listen for events and executes the voteNumber method
-   setupListeners(){
-      let liNodes = this.refs.numbers.querySelectorAll('li')
-      liNodes.forEach(number => {
-         number.addEventListener('click', event => {
-            event.target.className = 'number-selected'
-            this.voteNumber(parseInt(event.target.innerHTML), done => {
+      // Listen for account changes
+      window.ethereum.on("accountsChanged", (accounts) => {
+        this.setState({ account: accounts[0] });
+        window.location.reload();
+      });
 
-               // Remove the other number selected
-               for(let i = 0; i < liNodes.length; i++){
-                  liNodes[i].className = ''
-               }
-            })
-         })
-      })
-   }
+      // Listen for network changes
+      window.ethereum.on("chainChanged", () => {
+        window.location.reload();
+      });
+    } catch (error) {
+      console.error("Web3 initialization error:", error);
+      this.setState({
+        error: error.message || "Web3 initialization failed",
+        loading: false,
+      });
+    }
+  }
 
-   voteNumber(number, cb){
-      let bet = this.refs['ether-bet'].value
+  async updateState() {
+    const { contract, web3 } = this.state;
 
-      if(!bet) bet = 0.1
+    if (!contract || !web3) {
+      return;
+    }
 
-      if(parseFloat(bet) < this.state.minimumBet){
-         alert('You must bet more than the minimum')
-         cb()
-      } else {
-         this.state.ContractInstance.bet(number, {
-            gas: 300000,
-            from: web3.eth.accounts[0],
-            value: web3.toWei(bet, 'ether')
-         }, (err, result) => {
-            cb()
-         })
-      }
-   }
+    try {
+      // Get minimum bet
+      const minimumBet = await contract.methods.minimumBet().call();
+      this.setState({
+        minimumBet: parseFloat(web3.utils.fromWei(minimumBet, "ether")),
+      });
 
-   render(){
+      // Get total bet
+      const totalBet = await contract.methods.totalBet().call();
+      this.setState({
+        totalBet: parseFloat(web3.utils.fromWei(totalBet, "ether")),
+      });
+
+      // Get number of bets
+      const numberOfBets = await contract.methods.numberOfBets().call();
+      this.setState({
+        numberOfBets: parseInt(numberOfBets),
+      });
+
+      // Get max amount of bets
+      const maxAmountOfBets = await contract.methods.maxAmountOfBets().call();
+      this.setState({
+        maxAmountOfBets: parseInt(maxAmountOfBets),
+      });
+    } catch (error) {
+      console.error("Error updating state:", error);
+    }
+  }
+
+  setupListeners() {
+    if (!this.refs.numbers) return;
+
+    let liNodes = this.refs.numbers.querySelectorAll("li");
+    liNodes.forEach((number) => {
+      number.addEventListener("click", (event) => {
+        event.target.className = "number-selected";
+        this.voteNumber(parseInt(event.target.innerHTML), () => {
+          // Remove the other number selected
+          for (let i = 0; i < liNodes.length; i++) {
+            liNodes[i].className = "";
+          }
+        });
+      });
+    });
+  }
+
+  async voteNumber(number, cb) {
+    const { web3, contract, account } = this.state;
+
+    if (!web3 || !contract || !account) {
+      alert("Please wait for the app to finish loading");
+      cb();
+      return;
+    }
+
+    let bet = this.refs["ether-bet"].value;
+
+    if (!bet) bet = 0.1;
+
+    if (parseFloat(bet) < this.state.minimumBet) {
+      alert("You must bet more than the minimum");
+      cb();
+      return;
+    }
+
+    try {
+      await contract.methods.bet(number).send({
+        gas: 300000,
+        from: account,
+        value: web3.utils.toWei(bet.toString(), "ether"),
+      });
+
+      alert("Bet placed successfully!");
+      await this.updateState();
+      cb();
+    } catch (error) {
+      console.error("Error placing bet:", error);
+      alert("Error placing bet: " + error.message);
+      cb();
+    }
+  }
+
+  render() {
+    const { loading, error } = this.state;
+
+    // Show loading state
+    if (loading) {
       return (
-         <div className="main-container">
-            <h1>Bet for your best number and win huge amounts of Ether</h1>
+        <div className="main-container">
+          <h1>Loading...</h1>
+          <p>Connecting to MetaMask and loading the contract...</p>
+        </div>
+      );
+    }
 
-            <div className="block">
-               <b>Number of bets:</b> &nbsp;
-               <span>{this.state.numberOfBets}</span>
-            </div>
+    // Show error state
+    if (error) {
+      return (
+        <div className="main-container">
+          <h1>Error</h1>
+          <p style={{ color: "red" }}>{error}</p>
+          <button onClick={() => window.location.reload()}>Retry</button>
+        </div>
+      );
+    }
 
-            <div className="block">
-               <b>Last number winner:</b> &nbsp;
-               <span>{this.state.lastWinner}</span>
-            </div>
+    return (
+      <div className="main-container">
+        <h1>Bet for your best number and win huge amounts of Ether</h1>
 
-            <div className="block">
-               <b>Total ether bet:</b> &nbsp;
-               <span>{this.state.totalBet} ether</span>
-            </div>
+        <div className="block">
+          <b>Number of bets:</b> &nbsp;
+          <span>{this.state.numberOfBets}</span>
+        </div>
 
-            <div className="block">
-               <b>Minimum bet:</b> &nbsp;
-               <span>{this.state.minimumBet} ether</span>
-            </div>
+        <div className="block">
+          <b>Total ether bet:</b> &nbsp;
+          <span>{this.state.totalBet} ether</span>
+        </div>
 
-            <div className="block">
-               <b>Max amount of bets:</b> &nbsp;
-               <span>{this.state.maxAmountOfBets}</span>
-            </div>
+        <div className="block">
+          <b>Minimum bet:</b> &nbsp;
+          <span>{this.state.minimumBet} ether</span>
+        </div>
 
-            <hr/>
+        <div className="block">
+          <b>Max amount of bets:</b> &nbsp;
+          <span>{this.state.maxAmountOfBets}</span>
+        </div>
 
-            <h2>Vote for the next number</h2>
+        <hr />
 
-            <label>
-               <b>How much Ether do you want to bet? <input className="bet-input" ref="ether-bet" type="number" placeholder={this.state.minimumBet}/></b> ether
-               <br/>
-            </label>
+        <h2>Vote for the next number</h2>
 
-            <ul ref="numbers">
-               <li>1</li>
-               <li>2</li>
-               <li>3</li>
-               <li>4</li>
-               <li>5</li>
-               <li>6</li>
-               <li>7</li>
-               <li>8</li>
-               <li>9</li>
-               <li>10</li>
-            </ul>
+        <label>
+          <b>
+            How much Ether do you want to bet?{" "}
+            <input
+              className="bet-input"
+              ref="ether-bet"
+              type="number"
+              step="0.01"
+              placeholder={this.state.minimumBet}
+            />
+          </b>{" "}
+          ether
+          <br />
+        </label>
 
-            <hr/>
+        <ul ref="numbers">
+          <li>1</li>
+          <li>2</li>
+          <li>3</li>
+          <li>4</li>
+          <li>5</li>
+          <li>6</li>
+          <li>7</li>
+          <li>8</li>
+          <li>9</li>
+          <li>10</li>
+        </ul>
 
-            <div><i>Only working with the Ropsten Test Network</i></div>
-            <div><i>You can only vote once per account</i></div>
-            <div><i>Your vote will be reflected when the next block is mined</i></div>
-         </div>
-      )
-   }
+        <hr />
+
+        <div>
+          <i>Only working with the Sepolia Test Network</i>
+        </div>
+        <div>
+          <i>You can only vote once per account</i>
+        </div>
+        <div>
+          <i>Your vote will be reflected when the next block is mined</i>
+        </div>
+      </div>
+    );
+  }
 }
 
-ReactDOM.render(
-   <App />,
-   document.querySelector('#root')
-)
+ReactDOM.render(<App />, document.querySelector("#root"));
